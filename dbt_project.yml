@@ -1,0 +1,58 @@
+name: 'impulso_case'
+version: '1.0.0'
+config-version: 2
+
+profile: 'impulso_case'
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+vars:
+  # data de referência do case — todas as janelas de tempo são calculadas
+  # em relação a esta data, não à data de execução do pipeline.
+  data_referencia: '2026-08-01'
+
+models:
+  impulso_case:
+    staging:
+      +materialized: view
+    intermediate:
+      +materialized: ephemeral
+    marts:
+      +materialized: table
+
+# Os 3 CSVs brutos entram como seeds (dbt seed) — escolha deliberada pelo
+# volume pequeno do case; ver nota sobre isso na documentação do time de
+# produto / mensagem ao time de dados. Os column_types abaixo evitam que o
+# DuckDB infira campos como nu_ine e nu_cbo como número e derrube os zeros
+# à esquerda (ex.: "0001234568" viraria 1234568).
+seeds:
+  impulso_case:
+    +quote_columns: false
+    cidadao_pec:
+      +column_types:
+        co_fat_cidadao_pec: BIGINT
+        nu_cns: VARCHAR
+        nu_cpf_cidadao: VARCHAR
+        nu_ine: VARCHAR
+        equipe_ine_atendimento: VARCHAR
+    atendimento_individual:
+      +column_types:
+        co_fat_cidadao_pec: BIGINT
+        nu_cbo: VARCHAR
+        nu_ine: VARCHAR
+        nu_ciap: VARCHAR
+        nu_cid: VARCHAR
+    procedimentos:
+      +column_types:
+        co_fat_cidadao_pec: BIGINT
+        nu_cbo: VARCHAR
+        nu_ine: VARCHAR
+        co_proced: VARCHAR
