@@ -1,0 +1,46 @@
+version: 2
+
+models:
+  - name: stg_cidadao_pec
+    description: >
+      Staging do cadastro de cidadãos — camada 1:1 com a fonte, sem regra de
+      negócio de hipertensão. Uma linha por cidadão. Não há deduplicação
+      necessária aqui: confirmado na exploração que co_fat_cidadao_pec é
+      único no dado bruto (1200 linhas, uma única data_transmissao).
+    columns:
+      - name: id_cidadao
+        description: Chave primária. Identificador único do cidadão no e-SUS PEC.
+        tests:
+          - unique
+          - not_null
+
+      - name: sexo
+        description: Sexo do cidadão, conforme registrado no PEC.
+        tests:
+          - accepted_values:
+              values: ['MASCULINO', 'FEMININO']
+
+      - name: st_faleceu
+        description: Indica óbito registrado. Usado como critério de saída da lista nominal.
+        tests:
+          - not_null
+
+      - name: ine_vinculo
+        description: >
+          INE (chave estável) da equipe de vínculo do cidadão. Diferente de
+          ine_ultimo_atendimento, que é a equipe do último atendimento —
+          podem divergir (ver 03-dicionario-dados.md).
+
+  # - name: stg_atendimento_individual
+  #   description: >
+  #     TODO — dedup por co_seq_fat_atd_ind (manter transmissão mais recente),
+  #     filtro explícito de CBO família 2235/2251, padronização de nu_cbo pra 4 dígitos.
+  #   columns:
+  #     - name: <preencher>
+
+  # - name: stg_procedimentos
+  #   description: >
+  #     TODO — dedup por co_seq_fat_proced, extração de PA e peso/altura do
+  #     JSON `propriedades`, padronização de CBO.
+  #   columns:
+  #     - name: <preencher>
