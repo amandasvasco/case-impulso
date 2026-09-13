@@ -50,11 +50,11 @@ flowchart LR
 
     M1 --> P
 
-    style RAW fill:#f5f5f5,stroke:#999
-    style STG fill:#eaf3ff,stroke:#3b82f6
-    style INT fill:#fff7e6,stroke:#f59e0b
-    style MART fill:#e8f9ee,stroke:#22c55e
-    style P fill:#fdeef5,stroke:#ec4899
+    style RAW fill:#f5f5f5,stroke:#999,color:#000
+    style STG fill:#eaf3ff,stroke:#3b82f6,color:#000
+    style INT fill:#fff7e6,stroke:#f59e0b,color:#000
+    style MART fill:#e8f9ee,stroke:#22c55e,color:#000
+    style P fill:#fdeef5,stroke:#ec4899,color:#000
 ```
 
 **Camadas:**
