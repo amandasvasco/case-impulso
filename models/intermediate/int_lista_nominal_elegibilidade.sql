@@ -75,7 +75,12 @@ final as (
 select * from final
 
 {% if is_incremental() %}
-where data_transmissao_referencia > (
-    select coalesce(max(data_transmissao_referencia), date '1900-01-01') from {{ this }}
+-- Watermark por cidadao, nao global: um cidadao cuja atualizacao mais
+-- recente tenha data_transmissao menor que o maximo ja visto na tabela
+-- (por causa de outro cidadao processado antes) nao pode ser ignorado.
+where not exists (
+    select 1 from {{ this }} t
+    where t.id_cidadao = final.id_cidadao
+      and t.data_transmissao_referencia >= final.data_transmissao_referencia
 )
 {% endif %}

@@ -25,7 +25,12 @@ models:
           Watermark usado pela materialização incremental — transmissão
           mais recente (entre atendimentos de hipertensão/condição
           resolvida e o próprio cadastro) que pode ter afetado a
-          elegibilidade deste cidadão.
+          elegibilidade deste cidadão. A comparação incremental é feita
+          por cidadão (contra o valor já gravado para aquele id_cidadao
+          especificamente), não contra o máximo global da tabela — assim,
+          uma atualização isolada de um único cidadão não é ignorada só
+          por ter uma data_transmissao menor que a de outro cidadão já
+          processado em uma carga anterior.
         tests:
           - not_null
 
@@ -123,7 +128,12 @@ models:
           Watermark usado pela materialização incremental — maior
           transmissão entre o cadastro do próprio cidadão e qualquer
           registro (atendimento, procedimento ou cadastro) que alimente a
-          grafia canônica da equipe dele.
+          grafia canônica da equipe dele. Assim como em
+          int_lista_nominal_elegibilidade, a comparação incremental é
+          feita por cidadão, não pelo máximo global da tabela — uma
+          atualização cadastral isolada (ex.: troca de telefone) não é
+          perdida por ter data_transmissao menor que a de outro cidadão
+          processado antes.
         tests:
           - not_null
 
