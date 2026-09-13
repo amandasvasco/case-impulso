@@ -1,0 +1,193 @@
+version: 2
+
+models:
+  - name: int_lista_nominal_elegibilidade
+    description: >
+      Camada intermediate: um cidadão por linha, para todo cidadão que já
+      teve algum atendimento HIPERTENSÃO por médico/enfermeiro (critério de
+      entrada). Calcula a elegibilidade atual conforme os critérios de
+      saída (óbito ou condição resolvida). Materializado como incremental
+      (delete+insert por id_cidadao), reprocessando só cidadãos cuja
+      transmissão mais recente relevante mudou desde o último build.
+    columns:
+      - name: id_cidadao
+        description: FK para stg_cidadao_pec. Um cidadão por linha.
+        tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_cidadao_pec')
+                field: id_cidadao
+
+      - name: data_transmissao_referencia
+        description: >
+          Watermark usado pela materialização incremental — transmissão
+          mais recente (entre atendimentos de hipertensão/condição
+          resolvida e o próprio cadastro) que pode ter afetado a
+          elegibilidade deste cidadão. A comparação incremental é feita
+          por cidadão (contra o valor já gravado para aquele id_cidadao
+          especificamente), não contra o máximo global da tabela — assim,
+          uma atualização isolada de um único cidadão não é ignorada só
+          por ter uma data_transmissao menor que a de outro cidadão já
+          processado em uma carga anterior.
+        tests:
+          - not_null
+
+      - name: elegivel
+        description: >
+          true = permanece na lista nominal. false = saiu, por óbito ou
+          por condição resolvida (ver motivo_exclusao).
+        tests:
+          - not_null
+
+      - name: motivo_exclusao
+        description: >
+          Motivo da saída da lista quando elegivel = false. Nulo quando
+          elegivel = true.
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['FALECEU', 'CONDICAO_RESOLVIDA']
+
+  - name: int_status_boas_praticas
+    description: >
+      Camada intermediate: status das 3 boas práticas de acompanhamento
+      (Consulta, Aferição de PA, Peso e Altura) para cada cidadão elegível
+      na lista nominal, calculado contra var('data_referencia').
+    columns:
+      - name: id_cidadao
+        description: FK para int_lista_nominal_elegibilidade (só elegíveis).
+        tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int_lista_nominal_elegibilidade')
+                field: id_cidadao
+
+      - name: status_consulta
+        description: Status da boa prática "Consulta" (janela de 6 meses).
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['EM_DIA', 'ATRASADA', 'NUNCA_REALIZADA']
+
+      - name: status_afericao_pa
+        description: Status da boa prática "Aferição de PA" (janela de 6 meses).
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['EM_DIA', 'ATRASADA', 'NUNCA_REALIZADA']
+
+      - name: status_peso_altura
+        description: Status da boa prática "Peso e Altura" (janela de 12 meses).
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['EM_DIA', 'ATRASADA', 'NUNCA_REALIZADA']
+
+      - name: valor_ultimo_peso_kg
+        description: >
+          Peso (kg) da última medição de peso e altura registrada, entre os
+          profissionais elegíveis (médico, enfermeiro, técnico de enfermagem,
+          ACS), nos últimos 12 meses ou não. Sempre casado com o mesmo
+          registro de dt_ultima_peso_altura (peso e altura são medidos juntos
+          na mesma consulta/procedimento). Null quando o cidadão nunca teve
+          peso e altura registrados.
+
+      - name: valor_ultima_altura_cm
+        description: >
+          Altura (cm) da última medição de peso e altura registrada, mesma
+          fonte/regra de valor_ultimo_peso_kg — os dois valores vêm sempre do
+          mesmo registro. Null quando o cidadão nunca teve peso e altura
+          registrados.
+  - name: int_cidadao
+    description: >
+      Camada intermediate: enriquecimento e padronização dos dados do
+      cidadão vindos de stg_cidadao_pec — nome em maiúsculo, telefone
+      validado/formatado, idade calculada contra var('data_referencia'),
+      e grafia da equipe de vínculo padronizada. Materializado como
+      incremental (delete+insert por id_cidadao); o watermark de cada
+      cidadão considera tanto o próprio cadastro quanto qualquer mudança
+      na equipe a que ele pertence, já que o nome canônico da equipe
+      depende de um cálculo agregado entre vários cidadãos.
+    columns:
+      - name: id_cidadao
+        description: FK para stg_cidadao_pec. Um cidadão por linha.
+        tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_cidadao_pec')
+                field: id_cidadao
+
+      - name: data_transmissao_referencia
+        description: >
+          Watermark usado pela materialização incremental — maior
+          transmissão entre o cadastro do próprio cidadão e qualquer
+          registro (atendimento, procedimento ou cadastro) que alimente a
+          grafia canônica da equipe dele. Assim como em
+          int_lista_nominal_elegibilidade, a comparação incremental é
+          feita por cidadão, não pelo máximo global da tabela — uma
+          atualização cadastral isolada (ex.: troca de telefone) não é
+          perdida por ter data_transmissao menor que a de outro cidadão
+          processado antes.
+        tests:
+          - not_null
+
+      - name: nome_cidadao
+        description: >
+          Nome padronizado em maiúsculo (mesmo padrão do protótipo da
+          tela). 18 cidadãos no cadastro bruto têm nome vazio na fonte
+          (9 deles entre os elegíveis da lista) — permanece nulo aqui,
+          não é inventado; ver mensagem ao time de dados.
+        tests:
+          - not_null:
+              config:
+                severity: warn
+
+      - name: cns
+        description: Cartão Nacional de Saúde, repassado de stg_cidadao_pec sem alteração.
+
+      - name: cpf
+        description: CPF, repassado de stg_cidadao_pec sem alteração.
+
+      - name: dt_nascimento
+        description: Data de nascimento, repassada de stg_cidadao_pec sem alteração.
+
+      - name: idade
+        description: >
+          Idade calculada em relação a var('data_referencia')
+          (2026-08-01), não à data de execução do pipeline — mesma
+          convenção das janelas de tempo das boas práticas.
+
+      - name: telefone_celular
+        description: >
+          Telefone padronizado para o formato (XX) XXXXX-XXXX. Só
+          reformata quando o número tem exatamente 11 dígitos (DDD + 9
+          dígitos do celular) após remover toda formatação da fonte;
+          qualquer outra contagem de dígitos vira nulo (inválido, não dá
+          pra inferir o número certo). Nesta base os 1200 registros já
+          vinham 100% nesse padrão — validação existe como proteção para
+          cargas futuras mais sujas, não corrige nada hoje.
+
+      - name: ine_equipe
+        description: >
+          INE (chave estável) da equipe de vínculo do cidadão, repassado
+          de stg_cidadao_pec sem alteração.
+
+      - name: nome_equipe
+        description: >
+          Grafia canônica da equipe, padronizada para "ESF <número>".
+          Resolvida a partir de todas as ocorrências de (ine, nome da
+          equipe) nas 4 fontes disponíveis (vínculo e último atendimento
+          do cidadão, atendimento_individual, procedimentos), extraindo o
+          número de cada grafia bruta (tratando escrita por extenso,
+          pontuação, zero à esquerda e sufixos) e usando o valor mais
+          frequente por ine. Achado: os ines 0001234571 e 0001234572 —
+          dois times distintos — aparecem ambos como "ESF 5" no dado
+          bruto; colisão de digitação na fonte, não corrigida aqui (o
+          ine_equipe continua distinguindo os dois times corretamente) —
+          reportar ao time de dados.
