@@ -1,0 +1,153 @@
+version: 2
+
+models:
+  - name: lista_nominal_hipertensao
+    description: >
+      Tabela final que alimenta a tela Lista Nominal de Hipertensão — uma
+      linha por cidadão. Contém apenas cidadãos elegíveis: quem já teve, em
+      qualquer momento do histórico, um atendimento classificado como
+      HIPERTENSÃO realizado por médico ou enfermeiro, e que não saiu da
+      lista por óbito ou por ter tido a condição marcada como resolvida.
+      Para cada cidadão, traz o status das 3 boas práticas de
+      acompanhamento (Consulta, Aferição de Pressão Arterial, Peso e
+      Altura) calculado em relação à data de referência do case
+      (var('data_referencia') = 2026-08-01), não à data de execução do
+      pipeline.
+    columns:
+      - name: id_cidadao
+        description: >
+          Chave primária — um cidadão elegível por linha. Elegibilidade
+          definida em int_lista_nominal_elegibilidade: entrada por
+          histórico de atendimento HIPERTENSÃO (médico/enfermeiro); saída
+          por óbito (st_faleceu) ou por atendimento HIPERTENSÃO - CONDIÇÃO
+          RESOLVIDA.
+        tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int_lista_nominal_elegibilidade')
+                field: id_cidadao
+
+      - name: nome_cidadao
+        description: >
+          Nome do cidadão, já padronizado em maiúsculas pelo int_cidadao.
+          Campo operacional — é o que a equipe usa pra identificar a
+          pessoa ao agir sobre a lista (ligar, agendar consulta,
+          priorizar visita do ACS). 18 dos 1200 cidadãos da base bruta têm
+          nome vazio na origem (9 deles entre os elegíveis) — mantidos
+          como null aqui (não mascarados), teste rebaixado a warning
+          porque é uma lacuna de dado de origem, não um erro do pipeline;
+          ver mensagem à equipe de dados.
+        tests:
+          - not_null:
+              config:
+                severity: warn
+
+      - name: cns
+        description: Cartão Nacional de Saúde do cidadão, conforme cadastro no PEC.
+
+      - name: cpf
+        description: CPF do cidadão, conforme cadastro no PEC.
+
+      - name: dt_nascimento
+        description: Data de nascimento do cidadão.
+
+      - name: idade
+        description: >
+          Idade do cidadão calculada em relação a var('data_referencia')
+          (2026-08-01), não à data de execução do pipeline — mesma
+          convenção usada nas janelas de tempo das boas práticas, pra
+          manter a lista reprodutível independente de quando for rodada.
+          Calculada no int_cidadao, não na mart.
+
+      - name: telefone_celular
+        description: >
+          Telefone de contato do cidadão, validado e padronizado pro
+          formato (XX) XXXXX-XXXX pelo int_cidadao (null quando o dado
+          bruto não tem 11 dígitos válidos). Campo operacional — é o que
+          a equipe usa pra ligar diretamente pra pessoa a partir da lista.
+
+      - name: ine_equipe
+        description: >
+          INE (código estável) da equipe de saúde da família responsável
+          pelo cidadão — equipe de VÍNCULO, não a equipe do último
+          atendimento (que pode ser diferente, ver 03-dicionario-dados.md).
+          Escolhida porque é quem efetivamente vai agir sobre essa lista.
+
+      - name: nome_equipe
+        description: >
+          Nome da equipe de vínculo, padronizado pelo int_cidadao no
+          formato "ESF <número>" (extraído por regex a partir de todas as
+          grafias observadas pro mesmo ine, ver Achado #5). Atenção: os
+          ines 0001234571 e 0001234572 — duas equipes distintas — geram
+          ambos a grafia "ESF 5" no dado bruto; ine_equipe continua
+          distinguindo as duas corretamente, mas o nome de exibição
+          colide (achado de qualidade de dado, reportado à equipe de
+          dados, não corrigido aqui).
+
+      - name: microarea
+        description: >
+          Sempre nula. O protótipo da tela prevê filtro/coluna de
+          microárea, mas nenhuma das 3 fontes de dado brutas fornecidas
+          (cidadao_pec, atendimento_individual, procedimentos) contém essa
+          informação. Mantida como coluna explícita, em vez de omitida,
+          para deixar essa lacuna visível diretamente no schema — ver
+          limitações no entregável de documentação.
+
+      - name: status_consulta
+        description: >
+          Status da boa prática "Consulta": EM_DIA se o cidadão teve
+          atendimento individual (qualquer classificação, por médico ou
+          enfermeiro) nos 6 meses anteriores à data de referência;
+          ATRASADA se teve atendimento, mas fora dessa janela;
+          NUNCA_REALIZADA se nunca teve nenhum atendimento registrado.
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['EM_DIA', 'ATRASADA', 'NUNCA_REALIZADA']
+
+      - name: dt_ultima_consulta
+        description: Data do atendimento individual mais recente do cidadão, de qualquer classificação.
+
+      - name: status_afericao_pa
+        description: >
+          Status da boa prática "Aferição de Pressão Arterial": mesma
+          lógica de status_consulta, mas com janela de 6 meses sobre
+          registros de aferição de PA, restritos a profissionais
+          elegíveis (médico, enfermeiro ou técnico de enfermagem — CBO
+          família 2231/2251/2252/2253/2235/3222).
+
+      - name: dt_ultima_afericao_pa
+        description: Data da aferição de pressão arterial mais recente, dentro do conjunto de profissionais elegíveis.
+
+      - name: valor_ultima_afericao_pa
+        description: >
+          Valor (sistólica/diastólica, ex. "150/70") da aferição de
+          pressão arterial mais recente, casado com dt_ultima_afericao_pa.
+          Extraído do JSON `propriedades` na origem — a coluna dedicada do
+          dado bruto (qt_afericao_pressao_arterial) vem sempre vazia (ver
+          Achado #3). Exibido na tela conforme protótipo.
+
+      - name: status_peso_altura
+        description: >
+          Status da boa prática "Peso e Altura": mesma lógica das
+          anteriores, mas com janela de 12 meses (a mais longa das 3) e
+          conjunto de profissionais elegíveis mais amplo — inclui também
+          o Agente Comunitário de Saúde (CBO família 5151), além de
+          médico, enfermeiro e técnico de enfermagem.
+
+      - name: dt_ultima_peso_altura
+        description: Data do registro de peso e altura mais recente, dentro do conjunto de profissionais elegíveis.
+
+      - name: valor_ultimo_peso_kg
+        description: >
+          Peso (kg, casado com dt_ultima_peso_altura) da última medição
+          registrada. Não exibido no protótipo da tela, mas mantido na
+          lista por relevância clínica pro acompanhamento — redundância
+          intencional caso o produto decida exibir no futuro.
+
+      - name: valor_ultima_altura_cm
+        description: >
+          Altura (cm, casada com dt_ultima_peso_altura) da última medição
+          registrada. Mesma justificativa de valor_ultimo_peso_kg.

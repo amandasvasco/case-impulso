@@ -1,12 +1,12 @@
 {{ 
     config(
-        materialized='view'
+        materialized='view' 
         ) 
-}}
+}} -- pra ser mais rapido no teste
 
 with base as (
 
-    select * from {{ ref('cidadao_pec') }}
+    select * from {{ ref('cidadao_pec') }} -- referencia seed, se fosse uma tabela poderiamos usar source
 
 ),
 

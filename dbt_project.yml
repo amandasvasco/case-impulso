@@ -23,10 +23,13 @@ models:
   impulso_case:
     staging:
       +materialized: view
+      +schema: stg
     intermediate:
       +materialized: ephemeral
+      +schema: int
     marts:
       +materialized: table
+      +schema: marts
 
 # Os 3 CSVs brutos entram como seeds (dbt seed) — escolha deliberada pelo
 # volume pequeno do case; ver nota sobre isso na documentação do time de

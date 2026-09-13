@@ -9,7 +9,7 @@ models:
       único no dado bruto (1200 linhas, uma única data_transmissao).
     columns:
       - name: id_cidadao
-        description: Chave primária. Identificador único do cidadão no e-SUS PEC.
+        description: Chave primária. Identificador único do cidadão no PEC e-SUS.
         tests:
           - unique
           - not_null
@@ -18,7 +18,8 @@ models:
         description: Sexo do cidadão, conforme registrado no PEC.
         tests:
           - accepted_values:
-              values: ['MASCULINO', 'FEMININO']
+              arguments:
+                values: ['MASCULINO', 'FEMININO']
 
       - name: st_faleceu
         description: Indica óbito registrado. Usado como critério de saída da lista nominal.
@@ -31,16 +32,78 @@ models:
           ine_ultimo_atendimento, que é a equipe do último atendimento —
           podem divergir (ver 03-dicionario-dados.md).
 
-  # - name: stg_atendimento_individual
-  #   description: >
-  #     TODO — dedup por co_seq_fat_atd_ind (manter transmissão mais recente),
-  #     filtro explícito de CBO família 2235/2251, padronização de nu_cbo pra 4 dígitos.
-  #   columns:
-  #     - name: <preencher>
+  - name: stg_atendimento_individual
+    description: >
+      Staging de atendimentos individuais classificados por linha de
+      cuidado. Deduplicado por transmissão mais recente (Achado #1).
+      Filtrado explicitamente para médico/enfermeiro por família de CBO
+      (Achado #2 — dicionário nao conta com outros CBOs).
+    columns:
+      - name: id_atendimento
+        description: Chave primária. Formato composto id.CLASSIFICACAO (ex. 4100381.GERAL).
+        tests:
+          - unique
+          - not_null
 
-  # - name: stg_procedimentos
-  #   description: >
-  #     TODO — dedup por co_seq_fat_proced, extração de PA e peso/altura do
-  #     JSON `propriedades`, padronização de CBO.
-  #   columns:
-  #     - name: <preencher>
+      - name: id_cidadao
+        description: FK para stg_cidadao_pec.
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_cidadao_pec')
+                field: id_cidadao
+
+      - name: classificacao
+        description: Linha de cuidado do atendimento.
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['GERAL', 'HIPERTENSÃO', 'HIPERTENSÃO - CONDIÇÃO RESOLVIDA', 'DIABETES']
+
+      - name: cbo_familia
+        description: >
+          Primeiros 4 dígitos do CBO — usado pra checar elegibilidade de
+          médico/enfermeiro nas regras de negócio.
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['2231', '2251', '2252', '2253', '2235']
+
+  - name: stg_procedimentos
+    description: >
+      Staging de procedimentos e medições (aferição de pressão arterial,
+      peso e altura), consolidados de 3 origens (ficha_proced,
+      proced_atend_ind, atividade_coletiva). Deduplicado por transmissão
+      mais recente (Achado #1). Pressão arterial e peso/altura extraídos
+      do JSON `propriedades` (Achado #3) — as colunas dedicadas do dado
+      bruto vêm sempre vazias. Sem filtro de CBO aqui: cada boa prática
+      tem um conjunto diferente de profissionais elegíveis — esse filtro
+      é aplicado na camada intermediate, não na staging.
+    columns:
+      - name: id_procedimento
+        description: Chave primária composta (prefixo de origem + chave original).
+        tests:
+          - unique
+          - not_null
+
+      - name: id_cidadao
+        description: FK para stg_cidadao_pec.
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_cidadao_pec')
+                field: id_cidadao
+
+      - name: tipo_procedimento
+        description: Tipo do procedimento realizado.
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['AFERIÇÃO DE PRESSÃO ARTERIAL', 'MEDIÇÃO PESO E ALTURA']
+
+      - name: dt_procedimento
+        description: Data de realização do procedimento.
+        tests:
+          - not_null
